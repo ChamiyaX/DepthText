@@ -1,18 +1,45 @@
 ﻿"use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import dynamic from 'next/dynamic';
 import html2canvas from 'html2canvas';
 import Image from 'next/image';
-
-// Add this import instead
-import { safeRemoveBackground } from '../utils/backgroundRemoval';
 
 // Add image size limits and compression settings
 const MAX_IMAGE_SIZE = 800; // Reduced maximum dimension for faster processing
 const COMPRESSION_QUALITY = 0.6; // Slightly lower quality for faster processing
 
+export default function Home() {
+  const [originalImage, setOriginalImage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Simplified onDrop function that just sets the original image
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    const file = acceptedFiles[0];
+    if (!file) return;
+
+    try {
+      setError(null);
+
+      // Check file size before processing
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        setError('Image is too large. Please use an image smaller than 10MB.');
+        return;
+      }
+
+      // Convert file to data URL
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        if (e.target && e.target.result) {
+          setOriginalImage(e.target.result as string);
+        }
+      };
+      reader.onerror = function() {
+        setError('Failed to read file');
+      };
+      reader.readAsDataURL(file);
+      
+    } catch (err) {
 // Add this near the top of your file
 const isBackgroundRemovalEnabled = 
   typeof process !== 'undefined' && 

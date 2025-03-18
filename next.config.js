@@ -13,10 +13,9 @@ const nextConfig = {
     images: {
         unoptimized: true,
     },
-    // Fix for onnxruntime-web
     webpack: (config, { isServer }) => {
-        // Only apply these changes for client-side bundles
         if (!isServer) {
+            // Provide fallbacks for node modules
             config.resolve.fallback = {
                 ...config.resolve.fallback,
                 fs: false,
@@ -26,14 +25,18 @@ const nextConfig = {
                 os: false,
             };
 
-            // Ensure onnxruntime-web is properly handled
-            config.externals = [
-                ...(config.externals || []),
-                { 'onnxruntime-web': 'onnxruntime-web' }
-            ];
+            // Add a rule to handle the problematic module
+            config.module.rules.push({
+                test: /node_modules\/@imgly\/background-removal/,
+                use: 'null-loader',
+            });
         }
 
         return config;
+    },
+    // Disable background removal in production
+    env: {
+        NEXT_PUBLIC_ENABLE_BACKGROUND_REMOVAL: 'false',
     },
 }
 
