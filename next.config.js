@@ -8,15 +8,7 @@ const nextConfig = {
         // Disable TypeScript errors during production builds
         ignoreBuildErrors: true,
     },
-    output: 'standalone',
-    // Add this to ensure Tailwind CSS works correctly
-    webpack: (config) => {
-        config.module.rules.push({
-            test: /\.css$/,
-            use: ['style-loader', 'css-loader', 'postcss-loader'],
-        });
-        return config;
-    },
+    output: 'standalone'
 }
 
 module.exports = nextConfig
