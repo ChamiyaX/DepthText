@@ -6,10 +6,20 @@ import dynamic from 'next/dynamic';
 import html2canvas from 'html2canvas';
 import Image from 'next/image';
 
-// Dynamically import the background removal library with no SSR
+// Replace the dynamic import with a more robust version
 const BackgroundRemovalModule = dynamic(
-  () => import('@imgly/background-removal').then(mod => ({ default: mod.removeBackground })),
-  { ssr: false }
+  () => import('@imgly/background-removal').then(mod => {
+    // Check if the module is loaded correctly
+    if (!mod || typeof mod.removeBackground !== 'function') {
+      console.error('Background removal module loaded incorrectly:', mod);
+      throw new Error('Background removal module failed to load properly');
+    }
+    return { default: mod.removeBackground };
+  }),
+  { 
+    ssr: false,
+    loading: () => <div>Loading background removal module...</div>
+  }
 );
 
 // Add image size limits and compression settings
@@ -377,6 +387,7 @@ export default function Home() {
       const processImage = async () => {
         try {
           setError('Removing background... This may take a moment.');
+          // Use a try/catch when calling the module
           const processedBlob = await BackgroundRemovalModule(optimizedFile, {
             progress: (progress: any) => {
               // Ensure progress is a valid number between 0-100
@@ -414,8 +425,8 @@ export default function Home() {
           setProcessingProgress(100);
           setError(null);
         } catch (err) {
-          console.error('Error removing background:', err);
-          setError('Failed to remove background. Please try a different image or check your internet connection.');
+          console.error('Error in background removal:', err);
+          setError('Background removal failed. Please try a different image.');
           throw err; // Re-throw to handle in the outer catch
         }
       };

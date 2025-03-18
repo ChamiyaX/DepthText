@@ -14,18 +14,24 @@ const nextConfig = {
         unoptimized: true,
     },
     // Fix for onnxruntime-web
-    webpack: (config) => {
-        config.resolve.fallback = {
-            ...config.resolve.fallback,
-            fs: false,
-            path: false,
-        };
+    webpack: (config, { isServer }) => {
+        // Only apply these changes for client-side bundles
+        if (!isServer) {
+            config.resolve.fallback = {
+                ...config.resolve.fallback,
+                fs: false,
+                path: false,
+                crypto: false,
+                stream: false,
+                os: false,
+            };
 
-        // Add this to provide browser polyfills
-        config.resolve.alias = {
-            ...config.resolve.alias,
-            'onnxruntime-web': false,
-        };
+            // Ensure onnxruntime-web is properly handled
+            config.externals = [
+                ...(config.externals || []),
+                { 'onnxruntime-web': 'onnxruntime-web' }
+            ];
+        }
 
         return config;
     },
