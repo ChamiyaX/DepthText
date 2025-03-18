@@ -9,9 +9,16 @@ const nextConfig = {
         ignoreBuildErrors: true,
     },
     output: 'standalone',
-    experimental: {
-        outputFileTracingRoot: process.cwd(),
-    }
+    outputFileTracingRoot: process.cwd(),
+    // Fix for onnxruntime-web
+    webpack: (config) => {
+        config.resolve.fallback = {
+            ...config.resolve.fallback,
+            fs: false,
+            path: false,
+        };
+        return config;
+    },
 }
 
 module.exports = nextConfig
