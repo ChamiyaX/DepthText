@@ -11,7 +11,7 @@ export default function Document() {
         script dangerouslySetInnerHTML = {
             {
                 __html: `
-            // Fix for "m.default is not a constructor" error
+            // Fix for "d.default is not a constructor" error
             (function() {
               const originalDefineProperty = Object.defineProperty;
               Object.defineProperty = function(obj, prop, descriptor) {
@@ -27,6 +27,15 @@ export default function Document() {
                 }
                 return originalDefineProperty(obj, prop, descriptor);
               };
+              
+              // Also patch the Error constructor to provide more info
+              const originalError = Error;
+              window.Error = function(message) {
+                console.log('Error created:', message);
+                return new originalError(message);
+              };
+              window.Error.prototype = originalError.prototype;
+              
               console.log('Constructor error prevention installed');
             })();
           `
@@ -37,7 +46,7 @@ export default function Document() {
         <
         NextScript / >
         <
-        /body> <
-        /Html>
+        /body> < /
+        Html >
     );
 }

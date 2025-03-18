@@ -25,11 +25,23 @@ const nextConfig = {
                 os: false,
             };
 
-            // Add a rule to handle the problematic module
+            // Add a rule to handle the problematic modules
             config.module.rules.push({
                 test: /node_modules\/@imgly\/background-removal/,
                 use: 'null-loader',
             });
+
+            config.module.rules.push({
+                test: /node_modules\/html2canvas/,
+                use: 'null-loader',
+            });
+
+            // Prevent specific modules from being included
+            config.plugins.push(
+                new config.webpack.IgnorePlugin({
+                    resourceRegExp: /^(html2canvas|@imgly\/background-removal|onnxruntime-web)$/,
+                })
+            );
         }
 
         return config;
