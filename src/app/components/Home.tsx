@@ -6,25 +6,17 @@ import dynamic from 'next/dynamic';
 import html2canvas from 'html2canvas';
 import Image from 'next/image';
 
-// Replace the dynamic import with a more robust version
-const BackgroundRemovalModule = dynamic(
-  () => import('@imgly/background-removal').then(mod => {
-    // Check if the module is loaded correctly
-    if (!mod || typeof mod.removeBackground !== 'function') {
-      console.error('Background removal module loaded incorrectly:', mod);
-      throw new Error('Background removal module failed to load properly');
-    }
-    return { default: mod.removeBackground };
-  }),
-  { 
-    ssr: false,
-    loading: () => <div>Loading background removal module...</div>
-  }
-);
+// Add this import instead
+import { safeRemoveBackground } from '../utils/backgroundRemoval';
 
 // Add image size limits and compression settings
 const MAX_IMAGE_SIZE = 800; // Reduced maximum dimension for faster processing
 const COMPRESSION_QUALITY = 0.6; // Slightly lower quality for faster processing
+
+// Add this near the top of your file
+const isBackgroundRemovalEnabled = 
+  typeof process !== 'undefined' && 
+  process.env.NEXT_PUBLIC_ENABLE_BACKGROUND_REMOVAL === 'true';
 
 export default function Home() {
   const [originalImage, setOriginalImage] = useState<string | null>(null);
@@ -387,8 +379,18 @@ export default function Home() {
       const processImage = async () => {
         try {
           setError('Removing background... This may take a moment.');
+          
+          // Check if background removal is enabled
+          if (!isBackgroundRemovalEnabled) {
+            console.log('Background removal is disabled, using original image');
+            setProcessedImage(originalUrl);
+            setProcessingProgress(100);
+            setError(null);
+            return;
+          }
+          
           // Use a try/catch when calling the module
-          const processedBlob = await BackgroundRemovalModule(optimizedFile, {
+          const processedBlob = await safeRemoveBackground(optimizedFile, {
             progress: (progress: any) => {
               // Ensure progress is a valid number between 0-100
               const progressPercent = progress ? Math.round(progress * 100) : 0;
@@ -426,8 +428,10 @@ export default function Home() {
           setError(null);
         } catch (err) {
           console.error('Error in background removal:', err);
-          setError('Background removal failed. Please try a different image.');
-          throw err; // Re-throw to handle in the outer catch
+          setError('Background removal failed. Using original image instead.');
+          // Fallback to original image
+          setProcessedImage(originalUrl);
+          setProcessingProgress(100);
         }
       };
 
@@ -1312,6 +1316,15 @@ export default function Home() {
     }]);
     setActiveTextId('1');
     setError(null);
+  }, []);
+
+  // Add this function to your component
+  const handleBackgroundRemovalError = useCallback((originalImageUrl: string) => {
+    console.log('Using fallback for background removal');
+    setProcessedImage(originalImageUrl);
+    setProcessingProgress(100);
+    setError('Background removal unavailable. Using original image.');
+    setIsProcessing(false);
   }, []);
 
   return (
