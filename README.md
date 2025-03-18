@@ -19,7 +19,7 @@ TextBIMG is a web application that allows you to place text between an image's s
 
 ### Installation
 
-1. Clone the repository:
+1. Clone the repository kk:
 ```bash
 git clone https://github.com/yourusername/textbimg.git
 cd textbimg
