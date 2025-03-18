@@ -1,7 +1,7 @@
 [build]
-  command = "npm install && npm install --save-dev typescript @types/react && npm run build"
+  command = "npm install && npm install typescript@5.3.3 @types/react@19.0.0 @types/react-dom@19.0.0 @types/node@20.10.0 --no-save && npm run build"
   publish = ".next"
-  environment = { NEXT_DISABLE_ESLINT = "1", NODE_ENV = "production", CI = "false" }
+  environment = { NEXT_DISABLE_ESLINT = "1", NODE_ENV = "development", CI = "false" }
 
 [[plugins]]
   package = "@netlify/plugin-nextjs" 
