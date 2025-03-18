@@ -8,7 +8,10 @@ const nextConfig = {
         // Disable TypeScript errors during production builds
         ignoreBuildErrors: true,
     },
-    output: 'standalone'
+    output: 'standalone',
+    experimental: {
+        outputFileTracingRoot: process.cwd(),
+    }
 }
 
 module.exports = nextConfig
