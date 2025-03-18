@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 import { removeBackground } from "@imgly/background-removal";
 import html2canvas from 'html2canvas';
+import Image from 'next/image';
 
 // Add image size limits and compression settings
 const MAX_IMAGE_SIZE = 800; // Reduced maximum dimension for faster processing
@@ -1763,7 +1764,7 @@ export default function Home() {
                     >
                       {/* Layer 1: Original Background */}
                       {originalImage && (
-                        <img
+                        <Image
                           src={originalImage}
                           alt="Background"
                           className="absolute w-full h-full object-contain transition-opacity duration-300"
@@ -1775,6 +1776,8 @@ export default function Home() {
                             objectPosition: 'center'
                           }}
                           onLoad={handleImageLoad}
+                          width={imageSize?.width}
+                          height={imageSize?.height}
                         />
                       )}
 
@@ -1828,7 +1831,7 @@ export default function Home() {
 
                         {/* Layer 3: Subject (without background) - On top of text */}
                       {processedImage && (
-                        <img
+                        <Image
                           src={processedImage}
                           alt="Subject"
                           className="absolute w-full h-full object-contain transition-opacity duration-300"
@@ -1840,6 +1843,8 @@ export default function Home() {
                             objectPosition: 'center'
                           }}
                           onLoad={handleImageLoad}
+                          width={imageSize?.width}
+                          height={imageSize?.height}
                         />
                       )}
                     </div>
