@@ -8,8 +8,11 @@ const nextConfig = {
         // Disable TypeScript errors during production builds
         ignoreBuildErrors: true,
     },
-    output: 'standalone',
-    outputFileTracingRoot: process.cwd(),
+    output: 'export',
+    distDir: '.next',
+    images: {
+        unoptimized: true,
+    },
     // Fix for onnxruntime-web
     webpack: (config) => {
         config.resolve.fallback = {
