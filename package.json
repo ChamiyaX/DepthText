@@ -12,27 +12,27 @@
         "@imgly/background-removal": "^1.6.0",
         "@tensorflow/tfjs": "^4.22.0",
         "@tensorflow/tfjs-backend-webgl": "^4.22.0",
+        "autoprefixer": "^10.4.16",
         "dom-to-image-more": "^3.5.0",
         "html-to-image": "^1.11.13",
         "html2canvas": "^1.4.1",
         "next": "15.2.2",
+        "postcss": "^8.4.31",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
-        "react-dropzone": "^14.3.8"
+        "react-dropzone": "^14.3.8",
+        "tailwindcss": "^3.3.5"
     },
     "devDependencies": {
         "@eslint/eslintrc": "^3",
         "@types/node": "^20",
         "@types/react": "^19",
         "@types/react-dom": "^19",
-        "autoprefixer": "^10.4.16",
         "css-loader": "^6.8.1",
         "eslint": "^9",
         "eslint-config-next": "15.2.2",
-        "postcss": "^8.4.31",
         "postcss-loader": "^7.3.3",
         "style-loader": "^3.3.3",
-        "tailwindcss": "^3.3.5",
         "typescript": "^5"
     }
 }
