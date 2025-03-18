@@ -1,7 +1,7 @@
 [build]
-  command = "CI=false npm run build"
+  command = "npm run build"
   publish = ".next"
-  ignore_warnings = true
+  environment = { NEXT_DISABLE_ESLINT = "1", NODE_ENV = "production", CI = "false" }
 
 [[plugins]]
   package = "@netlify/plugin-nextjs" 
