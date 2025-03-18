@@ -2,9 +2,15 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
-import { removeBackground } from "@imgly/background-removal";
+import dynamic from 'next/dynamic';
 import html2canvas from 'html2canvas';
 import Image from 'next/image';
+
+// Dynamically import the background removal library with no SSR
+const BackgroundRemovalModule = dynamic(
+  () => import('@imgly/background-removal').then(mod => ({ default: mod.removeBackground })),
+  { ssr: false }
+);
 
 // Add image size limits and compression settings
 const MAX_IMAGE_SIZE = 800; // Reduced maximum dimension for faster processing
@@ -371,7 +377,7 @@ export default function Home() {
       const processImage = async () => {
         try {
           setError('Removing background... This may take a moment.');
-          const processedBlob = await removeBackground(optimizedFile, {
+          const processedBlob = await BackgroundRemovalModule(optimizedFile, {
             progress: (progress: any) => {
               // Ensure progress is a valid number between 0-100
               const progressPercent = progress ? Math.round(progress * 100) : 0;

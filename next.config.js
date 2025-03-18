@@ -20,6 +20,13 @@ const nextConfig = {
             fs: false,
             path: false,
         };
+
+        // Add this to provide browser polyfills
+        config.resolve.alias = {
+            ...config.resolve.alias,
+            'onnxruntime-web': false,
+        };
+
         return config;
     },
 }
