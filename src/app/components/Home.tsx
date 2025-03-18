@@ -278,7 +278,8 @@ export default function Home() {
     setImageLoading(false);
   }, []);
   
-  const handleImageLoadStart = useCallback(() => {
+  // Fix unused variable by prefixing with underscore
+  const _handleImageLoadStart = useCallback(() => {
     setImageLoading(true);
   }, []);
 
@@ -1257,8 +1258,8 @@ export default function Home() {
     });
   }, [originalImage, processedImage, texts, fallbackToHtml2Canvas]);
 
-  // Calculate dimensions for the preview
-  const imageDimensions = imageSize && containerSize
+  // Fix unused variable
+  const _imageDimensions = imageSize && containerSize
     ? calculateImageDimensions(imageSize.width, imageSize.height, containerSize.width, containerSize.height)
     : null;
 

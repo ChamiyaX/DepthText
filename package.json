@@ -4,9 +4,9 @@
     "private": true,
     "scripts": {
         "dev": "next dev --turbopack",
-        "build": "next build || exit 0",
+        "build": "next build",
         "start": "next start",
-        "lint": "next lint"
+        "lint": "next lint --max-warnings=0"
     },
     "dependencies": {
         "@imgly/background-removal": "^1.6.0",
