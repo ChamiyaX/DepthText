@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
+import { safeRemoveBackground } from '../utils/backgroundRemoval';
 
 // Add image size limits and compression settings
 const MAX_IMAGE_SIZE = 800; // Reduced maximum dimension for faster processing
@@ -34,14 +35,16 @@ const DEPTH_EFFECT_OPTIONS = [
 
 export default function Home() {
   const [originalImage, setOriginalImage] = useState<string | null>(null);
+  const [removedBgImage, setRemovedBgImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
   const [text, setText] = useState("");
   const [textColor, setTextColor] = useState("#ffffff");
   const [fontSize, setFontSize] = useState(32);
   const [textPosition, setTextPosition] = useState({ x: 50, y: 50 });
   const [isDragging, setIsDragging] = useState(false);
-  const [textBehind, setTextBehind] = useState(false);
+  const [textBehind, setTextBehind] = useState(true);
   const [textOpacity, setTextOpacity] = useState(1);
   const [fontFamily, setFontFamily] = useState(FONT_OPTIONS[0].value);
   const [textAlign, setTextAlign] = useState(TEXT_ALIGN_OPTIONS[1].value);
@@ -55,6 +58,9 @@ export default function Home() {
   const [depthIntensity, setDepthIntensity] = useState(5);
   const [textScale, setTextScale] = useState(1);
   const [textRotation, setTextRotation] = useState(0);
+  const [showOriginalLayer, setShowOriginalLayer] = useState(true);
+  const [showTextLayer, setShowTextLayer] = useState(true);
+  const [showForegroundLayer, setShowForegroundLayer] = useState(true);
   const imageRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
   
@@ -92,7 +98,7 @@ export default function Home() {
     };
   }, [depthEffect, depthIntensity, textScale]);
   
-  // Simplified onDrop function that just sets the original image
+  // Updated onDrop function to handle background removal
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (!file) return;
@@ -100,6 +106,7 @@ export default function Home() {
     try {
       setError(null);
       setIsProcessing(true);
+      setProcessingProgress(0);
 
       // Check file size before processing
       if (file.size > 10 * 1024 * 1024) { // 10MB limit
@@ -108,8 +115,8 @@ export default function Home() {
         return;
       }
 
-      // Convert file to data URL using a Promise
-      const dataUrl = await new Promise<string>((resolve, reject) => {
+      // Convert file to data URL for original image
+      const originalUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
           if (reader.result) {
@@ -122,7 +129,38 @@ export default function Home() {
         reader.readAsDataURL(file);
       });
       
-      setOriginalImage(dataUrl);
+      setOriginalImage(originalUrl);
+      setProcessingProgress(30);
+      
+      // Process background removal
+      try {
+        setError('Removing background... This may take a moment.');
+        
+        // Use the background removal utility
+        const processedBlob = await safeRemoveBackground(file, {
+          progress: (progress: number) => {
+            // Map the progress from 0-100 to 30-90 (reserving 0-30 for initial loading)
+            setProcessingProgress(30 + (progress * 0.6));
+          },
+          model: 'isnet',
+          fetchArgs: { 
+            cache: 'force-cache'
+          },
+          debug: false
+        });
+        
+        // Convert the processed blob to a data URL
+        const processedUrl = URL.createObjectURL(processedBlob);
+        setRemovedBgImage(processedUrl);
+        setProcessingProgress(100);
+        setError(null);
+      } catch (err) {
+        console.error('Error in background removal:', err);
+        setError('Background removal failed. Using original image instead.');
+        // Still set the original image so the user can continue
+        setRemovedBgImage(originalUrl);
+      }
+      
       setIsProcessing(false);
       
     } catch (err) {
@@ -247,9 +285,9 @@ export default function Home() {
     textRotation
   ]);
 
-  // Update the downloadImage function to include depth effects
+  // Updated downloadImage function to handle the layered effect
   const downloadImage = useCallback(() => {
-    if (!imageRef.current) return;
+    if (!imageRef.current || !originalImage) return;
     
     // Create a canvas element
     const canvas = document.createElement('canvas');
@@ -259,26 +297,33 @@ export default function Home() {
       return;
     }
     
-    // Create an image element to draw on canvas
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
+    // Create image elements for original and foreground
+    const originalImg = new Image();
+    originalImg.crossOrigin = 'anonymous';
+    
+    const foregroundImg = new Image();
+    foregroundImg.crossOrigin = 'anonymous';
+    
+    // Set up the loading sequence
+    originalImg.onload = () => {
       // Set canvas dimensions to match image
-      canvas.width = img.width;
-      canvas.height = img.height;
+      canvas.width = originalImg.width;
+      canvas.height = originalImg.height;
       
-      // Apply depth effect to canvas
-      const applyTextWithDepthEffect = (behindImage: boolean) => {
-        if (!text) return;
-        
+      // Layer 1: Draw the original image if enabled
+      if (showOriginalLayer) {
+        ctx.drawImage(originalImg, 0, 0);
+      } else {
+        // Fill with black if original layer is disabled
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      
+      // Layer 2: Draw the text if enabled
+      if (showTextLayer && text) {
         ctx.save();
         
-        // Set opacity for behind text
-        if (behindImage) {
-          ctx.globalAlpha = textOpacity;
-        }
-        
-        // Set font and style
+        // Apply text styling
         ctx.font = getFontStyle();
         ctx.fillStyle = textColor;
         ctx.textAlign = textAlign as CanvasTextAlign;
@@ -287,60 +332,68 @@ export default function Home() {
         const x = (textPosition.x / 100) * canvas.width;
         const y = (textPosition.y / 100) * canvas.height;
         
-        // Apply depth effects
-        if (depthEffect === 'behind' && behindImage) {
-          // Blur effect for behind subject
-          // Note: Canvas doesn't support blur directly, so we approximate
-          ctx.shadowBlur = depthIntensity * 2;
+        // Apply depth effects to text
+        if (depthEffect === 'behind') {
+          ctx.globalAlpha = textOpacity * 0.8;
+          ctx.filter = `blur(${depthIntensity / 2}px)`;
+        } else if (depthEffect === 'front') {
           ctx.shadowColor = 'rgba(0,0,0,0.5)';
-          ctx.globalAlpha = 0.8;
-        } else if (depthEffect === 'front' && !behindImage) {
-          // Sharper text for in front of subject
           ctx.shadowBlur = depthIntensity;
-          ctx.shadowColor = 'rgba(0,0,0,0.7)';
         }
         
-        // Apply rotation if needed
-        if (textRotation !== 0) {
-          ctx.translate(x, y);
-          ctx.rotate(textRotation * Math.PI / 180);
-          ctx.translate(-x, -y);
-        }
-        
-        // Apply scale if needed
-        if (textScale !== 1) {
-          ctx.translate(x, y);
-          ctx.scale(textScale, textScale);
-          ctx.translate(-x, -y);
-        }
+        // Apply text rotation and scaling
+        ctx.translate(x, y);
+        ctx.rotate(textRotation * Math.PI / 180);
+        ctx.scale(textScale, textScale);
         
         // Add text stroke if enabled
         if (textStroke) {
           ctx.strokeStyle = textStrokeColor;
           ctx.lineWidth = textStrokeWidth;
-          ctx.strokeText(text, x, y);
+          ctx.strokeText(text, 0, 0);
         }
         
         // Draw the text
-        ctx.fillText(text, x, y);
+        ctx.fillText(text, 0, 0);
+        
         ctx.restore();
-      };
-      
-      // If text is behind or has behind depth effect, draw text first
-      if ((textBehind || depthEffect === 'behind') && text) {
-        applyTextWithDepthEffect(true);
       }
       
-      // Draw the image on the canvas
-      ctx.drawImage(img, 0, 0);
-      
-      // If text is not behind or has front depth effect, draw text after image
-      if ((!textBehind || depthEffect === 'front') && text) {
-        applyTextWithDepthEffect(false);
-      }
-      
-      // Convert canvas to data URL and download
-      try {
+      // Layer 3: Draw the foreground (removed background) image if enabled
+      if (showForegroundLayer && removedBgImage) {
+        foregroundImg.onload = () => {
+          ctx.drawImage(foregroundImg, 0, 0, canvas.width, canvas.height);
+          
+          // Convert canvas to data URL and download
+          try {
+            const dataUrl = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = 'textbimg-processed.png';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          } catch (err) {
+            console.error('Error creating download:', err);
+            setError('Failed to create download');
+          }
+        };
+        
+        foregroundImg.onerror = () => {
+          setError('Failed to load foreground image for processing');
+          // Still try to download what we have
+          const dataUrl = canvas.toDataURL('image/png');
+          const link = document.createElement('a');
+          link.href = dataUrl;
+          link.download = 'textbimg-processed.png';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        };
+        
+        foregroundImg.src = removedBgImage;
+      } else {
+        // If foreground layer is disabled, download immediately
         const dataUrl = canvas.toDataURL('image/png');
         const link = document.createElement('a');
         link.href = dataUrl;
@@ -348,19 +401,17 @@ export default function Home() {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-      } catch (err) {
-        console.error('Error creating download:', err);
-        setError('Failed to create download');
       }
     };
     
-    img.onerror = () => {
+    originalImg.onerror = () => {
       setError('Failed to load image for processing');
     };
     
-    img.src = originalImage as string;
+    originalImg.src = originalImage;
   }, [
     originalImage, 
+    removedBgImage, 
     text, 
     textColor, 
     fontSize, 
@@ -369,16 +420,20 @@ export default function Home() {
     textOpacity, 
     fontFamily, 
     textAlign, 
+    textShadow, 
     textBold, 
     textItalic, 
     textStroke, 
     textStrokeColor, 
-    textStrokeWidth, 
-    getFontStyle,
+    textStrokeWidth,
     depthEffect,
     depthIntensity,
     textScale,
-    textRotation
+    textRotation,
+    showOriginalLayer,
+    showTextLayer,
+    showForegroundLayer,
+    getFontStyle
   ]);
 
   return (
@@ -393,7 +448,16 @@ export default function Home() {
           <input {...getInputProps()} />
           <div className="text-blue-400 mb-4">
             {isProcessing ? (
-              <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+              <div className="flex flex-col items-center">
+                <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mb-2"></div>
+                <div className="w-full bg-gray-700 rounded-full h-2.5 mb-2">
+                  <div 
+                    className="bg-blue-600 h-2.5 rounded-full" 
+                    style={{ width: `${processingProgress}%` }}
+                  ></div>
+                </div>
+                <div className="text-sm text-gray-400">{Math.round(processingProgress)}%</div>
+              </div>
             ) : (
               <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
@@ -414,32 +478,34 @@ export default function Home() {
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
-            style={{ perspective: '1000px' }}
           >
-            {text && (textBehind || depthEffect === 'behind') && (
+            {/* Layer 1: Original image (background) */}
+            {showOriginalLayer && (
+              <img 
+                src={originalImage} 
+                alt="Original image" 
+                className="absolute top-0 left-0 w-full h-full object-contain z-0"
+              />
+            )}
+            
+            {/* Layer 2: Text */}
+            {showTextLayer && text && (
               <div 
                 ref={textRef}
-                className="absolute pointer-events-none z-0"
+                className="absolute pointer-events-none z-10"
                 style={getTextStyle()}
               >
                 {text}
               </div>
             )}
             
-            <img 
-              src={originalImage} 
-              alt="Uploaded image" 
-              className="w-full h-full object-contain relative z-10"
-            />
-            
-            {text && (!textBehind || depthEffect === 'front' || depthEffect === '3d') && (
-              <div 
-                ref={textRef}
-                className="absolute pointer-events-none z-20"
-                style={getTextStyle()}
-              >
-                {text}
-              </div>
+            {/* Layer 3: Foreground (removed background) */}
+            {showForegroundLayer && removedBgImage && (
+              <img 
+                src={removedBgImage} 
+                alt="Foreground" 
+                className="absolute top-0 left-0 w-full h-full object-contain z-20"
+              />
             )}
           </div>
           
@@ -453,6 +519,39 @@ export default function Home() {
                 className="w-full px-3 py-2 bg-gray-700 rounded text-white"
                 placeholder="Enter text to add to image"
               />
+            </div>
+            
+            {/* Layer visibility controls */}
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showOriginalLayer}
+                  onChange={(e) => setShowOriginalLayer(e.target.checked)}
+                  className="form-checkbox h-5 w-5 text-blue-600"
+                />
+                <span className="text-sm font-medium">Background</span>
+              </label>
+              
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showTextLayer}
+                  onChange={(e) => setShowTextLayer(e.target.checked)}
+                  className="form-checkbox h-5 w-5 text-blue-600"
+                />
+                <span className="text-sm font-medium">Text</span>
+              </label>
+              
+              <label className="flex items-center space-x-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showForegroundLayer}
+                  onChange={(e) => setShowForegroundLayer(e.target.checked)}
+                  className="form-checkbox h-5 w-5 text-blue-600"
+                />
+                <span className="text-sm font-medium">Foreground</span>
+              </label>
             </div>
             
             <div className="grid grid-cols-2 gap-4 mb-4">
@@ -604,44 +703,16 @@ export default function Home() {
             
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="flex items-center space-x-2 cursor-pointer">
+                <label className="flex items-center space-x-2 cursor-pointer mb-2">
                   <input
                     type="checkbox"
-                    checked={textBehind}
-                    onChange={(e) => setTextBehind(e.target.checked)}
+                    checked={textStroke}
+                    onChange={(e) => setTextStroke(e.target.checked)}
                     className="form-checkbox h-5 w-5 text-blue-600"
                   />
-                  <span className="text-sm font-medium">Text Behind Image</span>
+                  <span className="text-sm font-medium">Text Outline</span>
                 </label>
               </div>
-              
-              {textBehind && (
-                <div>
-                  <label className="block text-sm font-medium mb-1">Text Opacity</label>
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="1"
-                    step="0.1"
-                    value={textOpacity}
-                    onChange={(e) => setTextOpacity(parseFloat(e.target.value))}
-                    className="w-full"
-                  />
-                  <div className="text-center">{Math.round(textOpacity * 100)}%</div>
-                </div>
-              )}
-            </div>
-            
-            <div className="mb-4">
-              <label className="flex items-center space-x-2 cursor-pointer mb-2">
-                <input
-                  type="checkbox"
-                  checked={textStroke}
-                  onChange={(e) => setTextStroke(e.target.checked)}
-                  className="form-checkbox h-5 w-5 text-blue-600"
-                />
-                <span className="text-sm font-medium">Text Outline</span>
-              </label>
               
               {textStroke && (
                 <div className="grid grid-cols-2 gap-4">
