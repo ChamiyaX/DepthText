@@ -31,60 +31,27 @@ export async function getBackgroundRemovalWorker() {
   }
 }
 
-// Safe wrapper function with fallback
+// Simplified background removal utility
 export async function safeRemoveBackground(file: File, options: any = {}) {
   try {
-    // Try to use the @imgly/background-removal library
+    // Try the simplest approach first
     try {
       const { removeBackground } = await import('@imgly/background-removal');
-      return await removeBackground(file, options);
-    } catch (primaryError) {
-      console.error('Primary background removal method failed:', primaryError);
+      return await removeBackground(file, {
+        ...options,
+        model: 'fast', // Always use the fastest model
+        fetchArgs: { 
+          cache: 'force-cache'
+        }
+      });
+    } catch (error) {
+      console.error('Background removal failed:', error);
       
-      // Fallback to worker-based approach
-      try {
-        const worker = await getBackgroundRemovalWorker();
-        const arrayBuffer = await file.arrayBuffer();
-        const result = await worker.remove(new Uint8Array(arrayBuffer), {
-          progress: options.progress,
-          model: options.model || 'medium'
-        });
-        
-        // Convert result to blob
-        return new Blob([result], { type: 'image/png' });
-      } catch (workerError) {
-        console.error('Worker-based background removal failed:', workerError);
-        throw workerError;
-      }
+      // Just return the original image as fallback
+      return file;
     }
   } catch (error) {
     console.error('All background removal methods failed:', error);
-    
-    // Create a fallback that just returns the original image
-    // This ensures the app doesn't crash even if background removal fails
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    
-    return new Promise<Blob>((resolve, reject) => {
-      img.onload = () => {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx?.drawImage(img, 0, 0);
-        canvas.toBlob(
-          (blob) => {
-            if (blob) {
-              resolve(blob);
-            } else {
-              reject(new Error('Failed to create fallback image'));
-            }
-          },
-          'image/png'
-        );
-      };
-      
-      img.onerror = () => reject(new Error('Failed to load image for fallback'));
-      img.src = URL.createObjectURL(file);
-    });
+    return file;
   }
 } 

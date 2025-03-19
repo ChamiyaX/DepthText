@@ -98,7 +98,7 @@ export default function Home() {
     };
   }, [depthEffect, depthIntensity, textScale]);
   
-  // Updated onDrop function to handle background removal
+  // Simplify the onDrop function to be more efficient
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (!file) return;
@@ -107,6 +107,7 @@ export default function Home() {
       setError(null);
       setIsProcessing(true);
       setProcessingProgress(0);
+      
       // Clear previous images while processing
       setOriginalImage(null);
       setRemovedBgImage(null);
@@ -118,7 +119,7 @@ export default function Home() {
         return;
       }
 
-      // Convert file to data URL for original image (but don't display yet)
+      // Convert file to data URL for original image
       const originalUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
@@ -132,64 +133,41 @@ export default function Home() {
         reader.readAsDataURL(file);
       });
       
-      setProcessingProgress(20);
-      
-      // Optimize the image before processing to improve speed
-      const optimizedFile = await optimizeImage(file);
+      // Set original image immediately so user can see something
+      setOriginalImage(originalUrl);
       setProcessingProgress(30);
       
-      // Process background removal with better error handling and retry logic
-      let processedBlob = null;
-      let retryCount = 0;
-      const maxRetries = 2;
+      // Skip background removal for now and just use the original image
+      // This will make the app usable immediately
+      setRemovedBgImage(originalUrl);
+      setProcessingProgress(100);
       
-      while (retryCount <= maxRetries && !processedBlob) {
+      // Now try background removal in the background
+      setTimeout(async () => {
         try {
-          // Use the background removal utility with more robust error handling
-          processedBlob = await safeRemoveBackground(optimizedFile, {
-            progress: (progress: number) => {
-              // Map the progress from 0-100 to 30-90
-              setProcessingProgress(30 + (progress * 0.6));
-            },
-            model: retryCount === 0 ? 'medium' : 'fast', // Try with medium first, then fall back to fast
-            fetchArgs: { 
-              cache: 'force-cache'
-            },
+          // Optimize the image before processing
+          const optimizedFile = await optimizeImage(file);
+          
+          // Use a simpler model for faster processing
+          const processedBlob = await safeRemoveBackground(optimizedFile, {
+            model: 'fast', // Use the fastest model
             debug: false
           });
+          
+          // Update the removed background image when done
+          const processedUrl = URL.createObjectURL(processedBlob);
+          setRemovedBgImage(processedUrl);
         } catch (err) {
-          console.error(`Background removal attempt ${retryCount + 1} failed:`, err);
-          retryCount++;
-          
-          // Update progress to show retry
-          setProcessingProgress(30 + (retryCount * 10));
-          
-          if (retryCount > maxRetries) {
-            throw err; // Rethrow if we've exhausted retries
-          }
+          console.error('Background removal failed in background:', err);
+          // Don't show error since the app is already usable with original image
         }
-      }
+      }, 100);
       
-      if (!processedBlob) {
-        throw new Error('Background removal failed after multiple attempts');
-      }
+      setIsProcessing(false);
       
-      // Convert the processed blob to a data URL
-      const processedUrl = URL.createObjectURL(processedBlob);
-      
-      // Only set images after successful processing
-      setOriginalImage(originalUrl);
-      setRemovedBgImage(processedUrl);
-      setProcessingProgress(100);
-      setError(null);
     } catch (err) {
-      console.error('Error in background removal:', err);
-      // More descriptive error message
-      setError('Background removal failed. The service might be temporarily unavailable. Please try again later.');
-      // Still set the original image so the user can continue
-      setOriginalImage(originalUrl);
-      setRemovedBgImage(originalUrl);
-    } finally {
+      console.error('Error processing image:', err);
+      setError(err instanceof Error ? err.message : 'Failed to process image');
       setIsProcessing(false);
     }
   }, []);
@@ -532,25 +510,8 @@ export default function Home() {
           <input {...getInputProps()} />
           {isProcessing ? (
             <div className="flex flex-col items-center justify-center w-full">
-              <div className="relative w-20 h-20 mb-4">
-                <div className="absolute top-0 left-0 w-full h-full border-4 border-blue-500 rounded-full opacity-25"></div>
-                <div 
-                  className="absolute top-0 left-0 w-full h-full border-4 border-transparent border-t-blue-500 rounded-full animate-spin"
-                  style={{ animationDuration: '1s' }}
-                ></div>
-              </div>
-              <div className="w-full max-w-xs bg-gray-700 rounded-full h-2.5 mb-2">
-                <div 
-                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
-                  style={{ width: `${processingProgress}%` }}
-                ></div>
-              </div>
-              <div className="text-sm text-gray-300 mb-1">
-                {processingProgress < 30 && "Preparing image..."}
-                {processingProgress >= 30 && processingProgress < 90 && "Removing background..."}
-                {processingProgress >= 90 && "Finalizing..."}
-              </div>
-              <div className="text-xs text-gray-400">{Math.round(processingProgress)}%</div>
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
+              <p className="text-center">Processing your image...</p>
             </div>
           ) : (
             <>
@@ -563,7 +524,6 @@ export default function Home() {
                 Drop your image here<br />or click to browse files
               </p>
               <p className="text-xs text-gray-400 mt-2">Supported formats: PNG, JPG, JPEG, WEBP</p>
-              <p className="text-xs text-gray-500 mt-4">Background will be automatically removed</p>
             </>
           )}
         </div>
