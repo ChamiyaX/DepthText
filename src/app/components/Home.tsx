@@ -16,6 +16,8 @@ export default function Home() {
   const [fontSize, setFontSize] = useState(32);
   const [textPosition, setTextPosition] = useState({ x: 50, y: 50 });
   const [isDragging, setIsDragging] = useState(false);
+  const [textBehind, setTextBehind] = useState(false);
+  const [textOpacity, setTextOpacity] = useState(1);
   const imageRef = useRef<HTMLDivElement>(null);
   
   // Simplified onDrop function that just sets the original image
@@ -121,11 +123,27 @@ export default function Home() {
       canvas.width = img.width;
       canvas.height = img.height;
       
+      // If text is behind, draw text first
+      if (textBehind && text) {
+        ctx.save();
+        ctx.globalAlpha = textOpacity;
+        ctx.font = `${fontSize}px Arial`;
+        ctx.fillStyle = textColor;
+        ctx.textAlign = 'center';
+        
+        // Calculate text position based on percentages
+        const x = (textPosition.x / 100) * canvas.width;
+        const y = (textPosition.y / 100) * canvas.height;
+        
+        ctx.fillText(text, x, y);
+        ctx.restore();
+      }
+      
       // Draw the image on the canvas
       ctx.drawImage(img, 0, 0);
       
-      // Add text to the canvas
-      if (text) {
+      // If text is not behind, draw text after image
+      if (!textBehind && text) {
         ctx.font = `${fontSize}px Arial`;
         ctx.fillStyle = textColor;
         ctx.textAlign = 'center';
@@ -157,7 +175,7 @@ export default function Home() {
     };
     
     img.src = originalImage as string;
-  }, [originalImage, text, textColor, fontSize, textPosition]);
+  }, [originalImage, text, textColor, fontSize, textPosition, textBehind, textOpacity]);
 
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4">
@@ -193,14 +211,32 @@ export default function Home() {
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
           >
+            {text && textBehind && (
+              <div 
+                className="absolute pointer-events-none z-0"
+                style={{
+                  left: `${textPosition.x}%`,
+                  top: `${textPosition.y}%`,
+                  transform: 'translate(-50%, -50%)',
+                  color: textColor,
+                  fontSize: `${fontSize}px`,
+                  opacity: textOpacity,
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {text}
+              </div>
+            )}
+            
             <img 
               src={originalImage} 
               alt="Uploaded image" 
-              className="w-full h-full object-contain"
+              className="w-full h-full object-contain relative z-10"
             />
-            {text && (
+            
+            {text && !textBehind && (
               <div 
-                className="absolute pointer-events-none"
+                className="absolute pointer-events-none z-20"
                 style={{
                   left: `${textPosition.x}%`,
                   top: `${textPosition.y}%`,
@@ -259,6 +295,36 @@ export default function Home() {
                 />
                 <div className="text-center">{fontSize}px</div>
               </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={textBehind}
+                    onChange={(e) => setTextBehind(e.target.checked)}
+                    className="form-checkbox h-5 w-5 text-blue-600"
+                  />
+                  <span className="text-sm font-medium">Text Behind Image</span>
+                </label>
+              </div>
+              
+              {textBehind && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Text Opacity</label>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1"
+                    step="0.1"
+                    value={textOpacity}
+                    onChange={(e) => setTextOpacity(parseFloat(e.target.value))}
+                    className="w-full"
+                  />
+                  <div className="text-center">{Math.round(textOpacity * 100)}%</div>
+                </div>
+              )}
             </div>
             
             <p className="text-sm text-gray-400 mb-2">Click and drag on the image to position the text</p>
