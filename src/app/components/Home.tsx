@@ -107,6 +107,9 @@ export default function Home() {
       setError(null);
       setIsProcessing(true);
       setProcessingProgress(0);
+      // Clear previous images while processing
+      setOriginalImage(null);
+      setRemovedBgImage(null);
 
       // Check file size before processing
       if (file.size > 10 * 1024 * 1024) { // 10MB limit
@@ -115,7 +118,7 @@ export default function Home() {
         return;
       }
 
-      // Convert file to data URL for original image
+      // Convert file to data URL for original image (but don't display yet)
       const originalUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
@@ -129,20 +132,21 @@ export default function Home() {
         reader.readAsDataURL(file);
       });
       
-      setOriginalImage(originalUrl);
+      setProcessingProgress(20);
+      
+      // Optimize the image before processing to improve speed
+      const optimizedFile = await optimizeImage(file);
       setProcessingProgress(30);
       
-      // Process background removal
+      // Process background removal with better error handling
       try {
-        setError('Removing background... This may take a moment.');
-        
-        // Use the background removal utility
-        const processedBlob = await safeRemoveBackground(file, {
+        // Use the background removal utility with more robust error handling
+        const processedBlob = await safeRemoveBackground(optimizedFile, {
           progress: (progress: number) => {
-            // Map the progress from 0-100 to 30-90 (reserving 0-30 for initial loading)
+            // Map the progress from 0-100 to 30-90
             setProcessingProgress(30 + (progress * 0.6));
           },
-          model: 'isnet',
+          model: 'isnet', // Use the fastest model
           fetchArgs: { 
             cache: 'force-cache'
           },
@@ -151,13 +155,18 @@ export default function Home() {
         
         // Convert the processed blob to a data URL
         const processedUrl = URL.createObjectURL(processedBlob);
+        
+        // Only set images after successful processing
+        setOriginalImage(originalUrl);
         setRemovedBgImage(processedUrl);
         setProcessingProgress(100);
         setError(null);
       } catch (err) {
         console.error('Error in background removal:', err);
-        setError('Background removal failed. Using original image instead.');
+        // More descriptive error message
+        setError('Background removal failed. The service might be temporarily unavailable. Please try again later.');
         // Still set the original image so the user can continue
+        setOriginalImage(originalUrl);
         setRemovedBgImage(originalUrl);
       }
       
@@ -169,6 +178,66 @@ export default function Home() {
       setIsProcessing(false);
     }
   }, []);
+
+  // Add this function to optimize images before processing
+  const optimizeImage = async (file: File): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        // Create a canvas to resize the image
+        const canvas = document.createElement('canvas');
+        
+        // Calculate new dimensions while maintaining aspect ratio
+        let width = img.width;
+        let height = img.height;
+        
+        // Limit dimensions for faster processing
+        const maxDimension = 1024; // Reduced for faster processing
+        if (width > height && width > maxDimension) {
+          height = (height * maxDimension) / width;
+          width = maxDimension;
+        } else if (height > maxDimension) {
+          width = (width * maxDimension) / height;
+          height = maxDimension;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        // Draw the resized image
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Failed to get canvas context'));
+          return;
+        }
+        
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Convert to blob with reduced quality
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error('Failed to create blob'));
+              return;
+            }
+            
+            // Create a new file from the blob
+            const optimizedFile = new File([blob], file.name, {
+              type: 'image/jpeg',
+              lastModified: Date.now(),
+            });
+            
+            resolve(optimizedFile);
+          },
+          'image/jpeg',
+          0.8 // Reduced quality for faster processing
+        );
+      };
+      
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = URL.createObjectURL(file);
+    });
+  };
 
   const { getRootProps, getInputProps } = useDropzone({
     onDrop,
@@ -443,31 +512,45 @@ export default function Home() {
       {!originalImage ? (
         <div 
           {...getRootProps()} 
-          className={`border-2 border-dashed border-blue-400 rounded-lg p-8 w-full max-w-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-300 transition-colors ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+          className={`border-2 border-dashed border-blue-400 rounded-lg p-8 w-full max-w-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-300 transition-colors ${isProcessing ? 'opacity-90 cursor-wait' : ''}`}
         >
           <input {...getInputProps()} />
-          <div className="text-blue-400 mb-4">
-            {isProcessing ? (
-              <div className="flex flex-col items-center">
-                <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mb-2"></div>
-                <div className="w-full bg-gray-700 rounded-full h-2.5 mb-2">
-                  <div 
-                    className="bg-blue-600 h-2.5 rounded-full" 
-                    style={{ width: `${processingProgress}%` }}
-                  ></div>
-                </div>
-                <div className="text-sm text-gray-400">{Math.round(processingProgress)}%</div>
+          {isProcessing ? (
+            <div className="flex flex-col items-center justify-center w-full">
+              <div className="relative w-20 h-20 mb-4">
+                <div className="absolute top-0 left-0 w-full h-full border-4 border-blue-500 rounded-full opacity-25"></div>
+                <div 
+                  className="absolute top-0 left-0 w-full h-full border-4 border-transparent border-t-blue-500 rounded-full animate-spin"
+                  style={{ animationDuration: '1s' }}
+                ></div>
               </div>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
-            )}
-          </div>
-          <p className="text-center">
-            {isProcessing ? 'Processing...' : 'Drop your image here\nor click to browse files'}
-          </p>
-          <p className="text-xs text-gray-400 mt-2">Supported formats: PNG, JPG, JPEG, WEBP</p>
+              <div className="w-full max-w-xs bg-gray-700 rounded-full h-2.5 mb-2">
+                <div 
+                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
+                  style={{ width: `${processingProgress}%` }}
+                ></div>
+              </div>
+              <div className="text-sm text-gray-300 mb-1">
+                {processingProgress < 30 && "Preparing image..."}
+                {processingProgress >= 30 && processingProgress < 90 && "Removing background..."}
+                {processingProgress >= 90 && "Finalizing..."}
+              </div>
+              <div className="text-xs text-gray-400">{Math.round(processingProgress)}%</div>
+            </div>
+          ) : (
+            <>
+              <div className="text-blue-400 mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+              </div>
+              <p className="text-center">
+                Drop your image here<br />or click to browse files
+              </p>
+              <p className="text-xs text-gray-400 mt-2">Supported formats: PNG, JPG, JPEG, WEBP</p>
+              <p className="text-xs text-gray-500 mt-4">Background will be automatically removed</p>
+            </>
+          )}
         </div>
       ) : (
         <div className="w-full max-w-xl">
@@ -772,11 +855,28 @@ export default function Home() {
       )}
       
       {error && (
-        <div className="mt-4 p-3 bg-red-900/50 border border-red-700 rounded text-red-200 flex items-center">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-          </svg>
-          {error}
+        <div className="mt-4 p-4 bg-red-900/50 border border-red-700 rounded-lg text-red-200">
+          <div className="flex items-start">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <div>
+              <p className="font-medium">{error}</p>
+              {error.includes('Background removal failed') && (
+                <p className="text-sm mt-1 text-red-300">
+                  You can still continue with the original image, or try uploading a different image with a clearer subject.
+                </p>
+              )}
+            </div>
+          </div>
+          {error.includes('Background removal failed') && originalImage && (
+            <button 
+              onClick={() => setError(null)}
+              className="mt-3 px-3 py-1 bg-red-800 hover:bg-red-700 rounded text-sm transition-colors"
+            >
+              Continue with original image
+            </button>
+          )}
         </div>
       )}
     </div>
