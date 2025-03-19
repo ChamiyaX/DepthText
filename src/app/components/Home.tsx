@@ -2,7 +2,6 @@
 
 import { useState, useRef, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
-import Image from 'next/image';
 
 // Add image size limits and compression settings
 const MAX_IMAGE_SIZE = 800; // Reduced maximum dimension for faster processing
@@ -12,6 +11,12 @@ export default function Home() {
   const [originalImage, setOriginalImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [text, setText] = useState("");
+  const [textColor, setTextColor] = useState("#ffffff");
+  const [fontSize, setFontSize] = useState(32);
+  const [textPosition, setTextPosition] = useState({ x: 50, y: 50 });
+  const [isDragging, setIsDragging] = useState(false);
+  const imageRef = useRef<HTMLDivElement>(null);
   
   // Simplified onDrop function that just sets the original image
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
@@ -61,6 +66,99 @@ export default function Home() {
     disabled: isProcessing
   });
 
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!imageRef.current) return;
+    
+    setIsDragging(true);
+    
+    // Get image container dimensions and position
+    const rect = imageRef.current.getBoundingClientRect();
+    
+    // Calculate position as percentage of container width/height
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    
+    setTextPosition({ x, y });
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isDragging || !imageRef.current) return;
+    
+    // Get image container dimensions and position
+    const rect = imageRef.current.getBoundingClientRect();
+    
+    // Calculate position as percentage of container width/height
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    
+    // Clamp values to stay within the image
+    const clampedX = Math.max(0, Math.min(100, x));
+    const clampedY = Math.max(0, Math.min(100, y));
+    
+    setTextPosition({ x: clampedX, y: clampedY });
+  }, [isDragging]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  const downloadImage = useCallback(() => {
+    if (!imageRef.current) return;
+    
+    // Create a canvas element
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      setError('Failed to create canvas context');
+      return;
+    }
+    
+    // Create an image element to draw on canvas
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      // Set canvas dimensions to match image
+      canvas.width = img.width;
+      canvas.height = img.height;
+      
+      // Draw the image on the canvas
+      ctx.drawImage(img, 0, 0);
+      
+      // Add text to the canvas
+      if (text) {
+        ctx.font = `${fontSize}px Arial`;
+        ctx.fillStyle = textColor;
+        ctx.textAlign = 'center';
+        
+        // Calculate text position based on percentages
+        const x = (textPosition.x / 100) * canvas.width;
+        const y = (textPosition.y / 100) * canvas.height;
+        
+        ctx.fillText(text, x, y);
+      }
+      
+      // Convert canvas to data URL and download
+      try {
+        const dataUrl = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = 'textbimg-processed.png';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (err) {
+        console.error('Error creating download:', err);
+        setError('Failed to create download');
+      }
+    };
+    
+    img.onerror = () => {
+      setError('Failed to load image for processing');
+    };
+    
+    img.src = originalImage as string;
+  }, [originalImage, text, textColor, fontSize, textPosition]);
+
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4">
       <h1 className="text-4xl font-bold mb-8">TextBIMG</h1>
@@ -87,15 +185,86 @@ export default function Home() {
         </div>
       ) : (
         <div className="w-full max-w-xl">
-          <div className="relative aspect-video overflow-hidden rounded-lg">
-            {/* Use a regular img tag instead of Next.js Image component */}
+          <div 
+            ref={imageRef}
+            className="relative aspect-video overflow-hidden rounded-lg mb-4 cursor-pointer"
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+          >
             <img 
               src={originalImage} 
               alt="Uploaded image" 
               className="w-full h-full object-contain"
             />
+            {text && (
+              <div 
+                className="absolute pointer-events-none"
+                style={{
+                  left: `${textPosition.x}%`,
+                  top: `${textPosition.y}%`,
+                  transform: 'translate(-50%, -50%)',
+                  color: textColor,
+                  fontSize: `${fontSize}px`,
+                  textShadow: '2px 2px 4px rgba(0,0,0,0.5)',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {text}
+              </div>
+            )}
           </div>
-          <div className="flex justify-between mt-4">
+          
+          <div className="bg-gray-800 p-4 rounded-lg mb-4">
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Text</label>
+              <input
+                type="text"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-700 rounded text-white"
+                placeholder="Enter text to add to image"
+              />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Color</label>
+                <div className="flex items-center">
+                  <input
+                    type="color"
+                    value={textColor}
+                    onChange={(e) => setTextColor(e.target.value)}
+                    className="w-10 h-10 rounded mr-2"
+                  />
+                  <input
+                    type="text"
+                    value={textColor}
+                    onChange={(e) => setTextColor(e.target.value)}
+                    className="flex-1 px-3 py-2 bg-gray-700 rounded text-white"
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Font Size</label>
+                <input
+                  type="range"
+                  min="12"
+                  max="100"
+                  value={fontSize}
+                  onChange={(e) => setFontSize(parseInt(e.target.value))}
+                  className="w-full"
+                />
+                <div className="text-center">{fontSize}px</div>
+              </div>
+            </div>
+            
+            <p className="text-sm text-gray-400 mb-2">Click and drag on the image to position the text</p>
+          </div>
+          
+          <div className="flex justify-between">
             <button 
               onClick={() => setOriginalImage(null)}
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
@@ -103,15 +272,7 @@ export default function Home() {
               Upload a different image
             </button>
             <button 
-              onClick={() => {
-                // Download the image
-                const link = document.createElement('a');
-                link.href = originalImage;
-                link.download = 'textbimg-processed.png';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-              }}
+              onClick={downloadImage}
               className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
             >
               Download Image
