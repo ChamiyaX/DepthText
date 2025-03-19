@@ -1,11 +1,36 @@
 ﻿"use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 
 // Add image size limits and compression settings
 const MAX_IMAGE_SIZE = 800; // Reduced maximum dimension for faster processing
 const COMPRESSION_QUALITY = 0.6; // Slightly lower quality for faster processing
+
+// Font options
+const FONT_OPTIONS = [
+  { name: "Arial", value: "Arial, sans-serif" },
+  { name: "Times New Roman", value: "Times New Roman, serif" },
+  { name: "Courier New", value: "Courier New, monospace" },
+  { name: "Georgia", value: "Georgia, serif" },
+  { name: "Verdana", value: "Verdana, sans-serif" },
+  { name: "Impact", value: "Impact, sans-serif" },
+];
+
+// Text alignment options
+const TEXT_ALIGN_OPTIONS = [
+  { name: "Left", value: "left" },
+  { name: "Center", value: "center" },
+  { name: "Right", value: "right" },
+];
+
+// Depth effect options
+const DEPTH_EFFECT_OPTIONS = [
+  { name: "None", value: "none" },
+  { name: "Behind Subject", value: "behind" },
+  { name: "In Front of Subject", value: "front" },
+  { name: "3D Effect", value: "3d" },
+];
 
 export default function Home() {
   const [originalImage, setOriginalImage] = useState<string | null>(null);
@@ -18,7 +43,54 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
   const [textBehind, setTextBehind] = useState(false);
   const [textOpacity, setTextOpacity] = useState(1);
+  const [fontFamily, setFontFamily] = useState(FONT_OPTIONS[0].value);
+  const [textAlign, setTextAlign] = useState(TEXT_ALIGN_OPTIONS[1].value);
+  const [textShadow, setTextShadow] = useState(false);
+  const [textBold, setTextBold] = useState(false);
+  const [textItalic, setTextItalic] = useState(false);
+  const [textStroke, setTextStroke] = useState(false);
+  const [textStrokeColor, setTextStrokeColor] = useState("#000000");
+  const [textStrokeWidth, setTextStrokeWidth] = useState(1);
+  const [depthEffect, setDepthEffect] = useState(DEPTH_EFFECT_OPTIONS[0].value);
+  const [depthIntensity, setDepthIntensity] = useState(5);
+  const [textScale, setTextScale] = useState(1);
+  const [textRotation, setTextRotation] = useState(0);
   const imageRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLDivElement>(null);
+  
+  // Effect to handle 3D perspective on mouse move
+  useEffect(() => {
+    if (depthEffect !== '3d' || !imageRef.current) return;
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!textRef.current || !imageRef.current) return;
+      
+      const rect = imageRef.current.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      
+      // Calculate distance from center (normalized from -1 to 1)
+      const distanceX = (e.clientX - centerX) / (rect.width / 2);
+      const distanceY = (e.clientY - centerY) / (rect.height / 2);
+      
+      // Apply 3D transform based on mouse position
+      const intensity = depthIntensity * 5;
+      const rotateY = distanceX * intensity;
+      const rotateX = -distanceY * intensity;
+      
+      textRef.current.style.transform = `
+        translate(-50%, -50%)
+        rotateX(${rotateX}deg)
+        rotateY(${rotateY}deg)
+        scale(${textScale})
+      `;
+    };
+    
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, [depthEffect, depthIntensity, textScale]);
   
   // Simplified onDrop function that just sets the original image
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
@@ -104,6 +176,78 @@ export default function Home() {
     setIsDragging(false);
   }, []);
 
+  // Get font style based on current settings
+  const getFontStyle = useCallback(() => {
+    let style = `${textBold ? 'bold ' : ''}${textItalic ? 'italic ' : ''}${fontSize}px ${fontFamily}`;
+    return style;
+  }, [fontSize, fontFamily, textBold, textItalic]);
+
+  // Get text shadow style
+  const getTextShadowStyle = useCallback(() => {
+    return textShadow ? '2px 2px 4px rgba(0,0,0,0.5)' : 'none';
+  }, [textShadow]);
+
+  // Get text style for preview with depth effect
+  const getTextStyle = useCallback(() => {
+    const baseStyle: any = {
+      left: `${textPosition.x}%`,
+      top: `${textPosition.y}%`,
+      color: textColor,
+      fontSize: `${fontSize}px`,
+      fontFamily: fontFamily,
+      fontWeight: textBold ? 'bold' : 'normal',
+      fontStyle: textItalic ? 'italic' : 'normal',
+      textAlign: textAlign,
+      textShadow: getTextShadowStyle(),
+      opacity: textBehind ? textOpacity : 1,
+      whiteSpace: 'nowrap',
+      WebkitTextStroke: textStroke ? `${textStrokeWidth}px ${textStrokeColor}` : 'none',
+    };
+    
+    // Apply different transform based on depth effect
+    if (depthEffect === '3d') {
+      // 3D effect is handled by the useEffect
+      baseStyle.transform = `translate(-50%, -50%) scale(${textScale})`;
+      baseStyle.transition = 'transform 0.1s ease-out';
+      baseStyle.transformStyle = 'preserve-3d';
+      baseStyle.perspective = '1000px';
+    } else if (depthEffect === 'behind') {
+      // Behind subject effect
+      baseStyle.transform = `translate(-50%, -50%) scale(${textScale}) rotate(${textRotation}deg)`;
+      baseStyle.filter = `blur(${depthIntensity / 2}px)`;
+      baseStyle.opacity = 0.8;
+    } else if (depthEffect === 'front') {
+      // In front of subject effect
+      baseStyle.transform = `translate(-50%, -50%) scale(${textScale}) rotate(${textRotation}deg)`;
+      baseStyle.textShadow = `0 0 ${depthIntensity}px rgba(0,0,0,0.5)`;
+      baseStyle.zIndex = 30;
+    } else {
+      // No special effect
+      baseStyle.transform = `translate(-50%, -50%) scale(${textScale}) rotate(${textRotation}deg)`;
+    }
+    
+    return baseStyle;
+  }, [
+    textPosition, 
+    textColor, 
+    fontSize, 
+    fontFamily, 
+    textBold, 
+    textItalic, 
+    textAlign, 
+    getTextShadowStyle, 
+    textBehind, 
+    textOpacity, 
+    textStroke, 
+    textStrokeWidth, 
+    textStrokeColor,
+    depthEffect,
+    depthIntensity,
+    textScale,
+    textRotation
+  ]);
+
+  // Update the downloadImage function to include depth effects
   const downloadImage = useCallback(() => {
     if (!imageRef.current) return;
     
@@ -123,36 +267,76 @@ export default function Home() {
       canvas.width = img.width;
       canvas.height = img.height;
       
-      // If text is behind, draw text first
-      if (textBehind && text) {
+      // Apply depth effect to canvas
+      const applyTextWithDepthEffect = (behindImage: boolean) => {
+        if (!text) return;
+        
         ctx.save();
-        ctx.globalAlpha = textOpacity;
-        ctx.font = `${fontSize}px Arial`;
+        
+        // Set opacity for behind text
+        if (behindImage) {
+          ctx.globalAlpha = textOpacity;
+        }
+        
+        // Set font and style
+        ctx.font = getFontStyle();
         ctx.fillStyle = textColor;
-        ctx.textAlign = 'center';
+        ctx.textAlign = textAlign as CanvasTextAlign;
         
         // Calculate text position based on percentages
         const x = (textPosition.x / 100) * canvas.width;
         const y = (textPosition.y / 100) * canvas.height;
         
+        // Apply depth effects
+        if (depthEffect === 'behind' && behindImage) {
+          // Blur effect for behind subject
+          // Note: Canvas doesn't support blur directly, so we approximate
+          ctx.shadowBlur = depthIntensity * 2;
+          ctx.shadowColor = 'rgba(0,0,0,0.5)';
+          ctx.globalAlpha = 0.8;
+        } else if (depthEffect === 'front' && !behindImage) {
+          // Sharper text for in front of subject
+          ctx.shadowBlur = depthIntensity;
+          ctx.shadowColor = 'rgba(0,0,0,0.7)';
+        }
+        
+        // Apply rotation if needed
+        if (textRotation !== 0) {
+          ctx.translate(x, y);
+          ctx.rotate(textRotation * Math.PI / 180);
+          ctx.translate(-x, -y);
+        }
+        
+        // Apply scale if needed
+        if (textScale !== 1) {
+          ctx.translate(x, y);
+          ctx.scale(textScale, textScale);
+          ctx.translate(-x, -y);
+        }
+        
+        // Add text stroke if enabled
+        if (textStroke) {
+          ctx.strokeStyle = textStrokeColor;
+          ctx.lineWidth = textStrokeWidth;
+          ctx.strokeText(text, x, y);
+        }
+        
+        // Draw the text
         ctx.fillText(text, x, y);
         ctx.restore();
+      };
+      
+      // If text is behind or has behind depth effect, draw text first
+      if ((textBehind || depthEffect === 'behind') && text) {
+        applyTextWithDepthEffect(true);
       }
       
       // Draw the image on the canvas
       ctx.drawImage(img, 0, 0);
       
-      // If text is not behind, draw text after image
-      if (!textBehind && text) {
-        ctx.font = `${fontSize}px Arial`;
-        ctx.fillStyle = textColor;
-        ctx.textAlign = 'center';
-        
-        // Calculate text position based on percentages
-        const x = (textPosition.x / 100) * canvas.width;
-        const y = (textPosition.y / 100) * canvas.height;
-        
-        ctx.fillText(text, x, y);
+      // If text is not behind or has front depth effect, draw text after image
+      if ((!textBehind || depthEffect === 'front') && text) {
+        applyTextWithDepthEffect(false);
       }
       
       // Convert canvas to data URL and download
@@ -175,7 +359,27 @@ export default function Home() {
     };
     
     img.src = originalImage as string;
-  }, [originalImage, text, textColor, fontSize, textPosition, textBehind, textOpacity]);
+  }, [
+    originalImage, 
+    text, 
+    textColor, 
+    fontSize, 
+    textPosition, 
+    textBehind, 
+    textOpacity, 
+    fontFamily, 
+    textAlign, 
+    textBold, 
+    textItalic, 
+    textStroke, 
+    textStrokeColor, 
+    textStrokeWidth, 
+    getFontStyle,
+    depthEffect,
+    depthIntensity,
+    textScale,
+    textRotation
+  ]);
 
   return (
     <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center justify-center p-4">
@@ -210,19 +414,13 @@ export default function Home() {
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
+            style={{ perspective: '1000px' }}
           >
-            {text && textBehind && (
+            {text && (textBehind || depthEffect === 'behind') && (
               <div 
+                ref={textRef}
                 className="absolute pointer-events-none z-0"
-                style={{
-                  left: `${textPosition.x}%`,
-                  top: `${textPosition.y}%`,
-                  transform: 'translate(-50%, -50%)',
-                  color: textColor,
-                  fontSize: `${fontSize}px`,
-                  opacity: textOpacity,
-                  whiteSpace: 'nowrap'
-                }}
+                style={getTextStyle()}
               >
                 {text}
               </div>
@@ -234,18 +432,11 @@ export default function Home() {
               className="w-full h-full object-contain relative z-10"
             />
             
-            {text && !textBehind && (
+            {text && (!textBehind || depthEffect === 'front' || depthEffect === '3d') && (
               <div 
+                ref={textRef}
                 className="absolute pointer-events-none z-20"
-                style={{
-                  left: `${textPosition.x}%`,
-                  top: `${textPosition.y}%`,
-                  transform: 'translate(-50%, -50%)',
-                  color: textColor,
-                  fontSize: `${fontSize}px`,
-                  textShadow: '2px 2px 4px rgba(0,0,0,0.5)',
-                  whiteSpace: 'nowrap'
-                }}
+                style={getTextStyle()}
               >
                 {text}
               </div>
@@ -299,6 +490,120 @@ export default function Home() {
             
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
+                <label className="block text-sm font-medium mb-1">Font Family</label>
+                <select
+                  value={fontFamily}
+                  onChange={(e) => setFontFamily(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-700 rounded text-white"
+                >
+                  {FONT_OPTIONS.map((font) => (
+                    <option key={font.value} value={font.value}>
+                      {font.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Text Align</label>
+                <select
+                  value={textAlign}
+                  onChange={(e) => setTextAlign(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-700 rounded text-white"
+                >
+                  {TEXT_ALIGN_OPTIONS.map((align) => (
+                    <option key={align.value} value={align.value}>
+                      {align.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              <button
+                onClick={() => setTextBold(!textBold)}
+                className={`px-3 py-2 rounded ${textBold ? 'bg-blue-600' : 'bg-gray-700'}`}
+              >
+                Bold
+              </button>
+              <button
+                onClick={() => setTextItalic(!textItalic)}
+                className={`px-3 py-2 rounded ${textItalic ? 'bg-blue-600' : 'bg-gray-700'}`}
+              >
+                Italic
+              </button>
+              <button
+                onClick={() => setTextShadow(!textShadow)}
+                className={`px-3 py-2 rounded ${textShadow ? 'bg-blue-600' : 'bg-gray-700'}`}
+              >
+                Shadow
+              </button>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1">Depth Effect</label>
+              <select
+                value={depthEffect}
+                onChange={(e) => setDepthEffect(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-700 rounded text-white mb-2"
+              >
+                {DEPTH_EFFECT_OPTIONS.map((effect) => (
+                  <option key={effect.value} value={effect.value}>
+                    {effect.name}
+                  </option>
+                ))}
+              </select>
+              
+              {depthEffect !== 'none' && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Effect Intensity</label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="10"
+                      value={depthIntensity}
+                      onChange={(e) => setDepthIntensity(parseInt(e.target.value))}
+                      className="w-full"
+                    />
+                    <div className="text-center">{depthIntensity}</div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Text Scale</label>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="2"
+                      step="0.1"
+                      value={textScale}
+                      onChange={(e) => setTextScale(parseFloat(e.target.value))}
+                      className="w-full"
+                    />
+                    <div className="text-center">{textScale.toFixed(1)}x</div>
+                  </div>
+                </div>
+              )}
+              
+              {depthEffect !== 'none' && depthEffect !== '3d' && (
+                <div className="mt-2">
+                  <label className="block text-sm font-medium mb-1">Text Rotation</label>
+                  <input
+                    type="range"
+                    min="-30"
+                    max="30"
+                    value={textRotation}
+                    onChange={(e) => setTextRotation(parseInt(e.target.value))}
+                    className="w-full"
+                  />
+                  <div className="text-center">{textRotation}°</div>
+                </div>
+              )}
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
                 <label className="flex items-center space-x-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -323,6 +628,54 @@ export default function Home() {
                     className="w-full"
                   />
                   <div className="text-center">{Math.round(textOpacity * 100)}%</div>
+                </div>
+              )}
+            </div>
+            
+            <div className="mb-4">
+              <label className="flex items-center space-x-2 cursor-pointer mb-2">
+                <input
+                  type="checkbox"
+                  checked={textStroke}
+                  onChange={(e) => setTextStroke(e.target.checked)}
+                  className="form-checkbox h-5 w-5 text-blue-600"
+                />
+                <span className="text-sm font-medium">Text Outline</span>
+              </label>
+              
+              {textStroke && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Outline Color</label>
+                    <div className="flex items-center">
+                      <input
+                        type="color"
+                        value={textStrokeColor}
+                        onChange={(e) => setTextStrokeColor(e.target.value)}
+                        className="w-10 h-10 rounded mr-2"
+                      />
+                      <input
+                        type="text"
+                        value={textStrokeColor}
+                        onChange={(e) => setTextStrokeColor(e.target.value)}
+                        className="flex-1 px-3 py-2 bg-gray-700 rounded text-white"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Outline Width</label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="5"
+                      step="0.5"
+                      value={textStrokeWidth}
+                      onChange={(e) => setTextStrokeWidth(parseFloat(e.target.value))}
+                      className="w-full"
+                    />
+                    <div className="text-center">{textStrokeWidth}px</div>
+                  </div>
                 </div>
               )}
             </div>
