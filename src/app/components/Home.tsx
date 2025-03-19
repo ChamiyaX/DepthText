@@ -138,43 +138,58 @@ export default function Home() {
       const optimizedFile = await optimizeImage(file);
       setProcessingProgress(30);
       
-      // Process background removal with better error handling
-      try {
-        // Use the background removal utility with more robust error handling
-        const processedBlob = await safeRemoveBackground(optimizedFile, {
-          progress: (progress: number) => {
-            // Map the progress from 0-100 to 30-90
-            setProcessingProgress(30 + (progress * 0.6));
-          },
-          model: 'isnet', // Use the fastest model
-          fetchArgs: { 
-            cache: 'force-cache'
-          },
-          debug: false
-        });
-        
-        // Convert the processed blob to a data URL
-        const processedUrl = URL.createObjectURL(processedBlob);
-        
-        // Only set images after successful processing
-        setOriginalImage(originalUrl);
-        setRemovedBgImage(processedUrl);
-        setProcessingProgress(100);
-        setError(null);
-      } catch (err) {
-        console.error('Error in background removal:', err);
-        // More descriptive error message
-        setError('Background removal failed. The service might be temporarily unavailable. Please try again later.');
-        // Still set the original image so the user can continue
-        setOriginalImage(originalUrl);
-        setRemovedBgImage(originalUrl);
+      // Process background removal with better error handling and retry logic
+      let processedBlob = null;
+      let retryCount = 0;
+      const maxRetries = 2;
+      
+      while (retryCount <= maxRetries && !processedBlob) {
+        try {
+          // Use the background removal utility with more robust error handling
+          processedBlob = await safeRemoveBackground(optimizedFile, {
+            progress: (progress: number) => {
+              // Map the progress from 0-100 to 30-90
+              setProcessingProgress(30 + (progress * 0.6));
+            },
+            model: retryCount === 0 ? 'medium' : 'fast', // Try with medium first, then fall back to fast
+            fetchArgs: { 
+              cache: 'force-cache'
+            },
+            debug: false
+          });
+        } catch (err) {
+          console.error(`Background removal attempt ${retryCount + 1} failed:`, err);
+          retryCount++;
+          
+          // Update progress to show retry
+          setProcessingProgress(30 + (retryCount * 10));
+          
+          if (retryCount > maxRetries) {
+            throw err; // Rethrow if we've exhausted retries
+          }
+        }
       }
       
-      setIsProcessing(false);
+      if (!processedBlob) {
+        throw new Error('Background removal failed after multiple attempts');
+      }
       
+      // Convert the processed blob to a data URL
+      const processedUrl = URL.createObjectURL(processedBlob);
+      
+      // Only set images after successful processing
+      setOriginalImage(originalUrl);
+      setRemovedBgImage(processedUrl);
+      setProcessingProgress(100);
+      setError(null);
     } catch (err) {
-      console.error('Error processing image:', err);
-      setError(err instanceof Error ? err.message : 'Failed to process image');
+      console.error('Error in background removal:', err);
+      // More descriptive error message
+      setError('Background removal failed. The service might be temporarily unavailable. Please try again later.');
+      // Still set the original image so the user can continue
+      setOriginalImage(originalUrl);
+      setRemovedBgImage(originalUrl);
+    } finally {
       setIsProcessing(false);
     }
   }, []);
